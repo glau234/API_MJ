@@ -23,18 +23,15 @@ pipeline {
     // Configuração de credenciais e variáveis sensíveis cadastradas no Jenkins:
     // Manage Jenkins -> Credentials -> System -> Global credentials
     environment {
+        // Adiciona ao PATH o diretório de instalação do Python e Scripts no Windows
+        PATH = "C:\\Users\\glaucio.silva\\AppData\\Local\\Programs\\Python\\Python312;C:\\Users\\glaucio.silva\\AppData\\Local\\Programs\\Python\\Python312\\Scripts;C:\\Python312;C:\\Python312\\Scripts;${env.PATH}"
         PYTHONUNBUFFERED = '1'
         ETL_MODO_CARGA   = "${params.MODO_CARGA}"
         
-        // Exemplo 1: Se você cadastrou as credenciais individualmente no Jenkins (Recomendado):
+        // Exemplo: se configurado via Credentials no Jenkins:
         // MJ_CLIENT_ID     = credentials('MJ_CLIENT_ID')
         // MJ_CLIENT_SECRET = credentials('MJ_CLIENT_SECRET')
         // DB_PASSWORD      = credentials('DB_POSTGRES_PASSWORD')
-        // DB_USER          = 'user_glaucio'
-        // DB_HOST          = '10.91.61.21'
-        // DB_PORT          = '5432'
-        // DB_NAME          = 'suag'
-        // DB_SCHEMA        = 'API_MJ'
     }
 
     stages {
@@ -43,8 +40,6 @@ pipeline {
                 // Cria diretório de logs se não existir
                 dir('logs') { }
                 
-                // Instala ou valida as dependências do projeto
-                // Funciona tanto em agentes Windows (bat) quanto Linux (sh)
                 script {
                     if (isUnix()) {
                         sh '''
@@ -53,8 +48,23 @@ pipeline {
                         '''
                     } else {
                         bat '''
+                            @echo off
+                            echo === Validando Python e Ambiente ===
+                            where python
+
+                            REM Copia o arquivo .env seguro com senhas e chaves se estiver na maquina local
+                            if not exist ".env" (
+                                if exist "D:\\API_MJ\\.env" (
+                                    echo Copiando arquivo .env de D:\\API_MJ\\.env para o workspace...
+                                    copy "D:\\API_MJ\\.env" ".env" >nul
+                                ) else (
+                                    echo AVISO: Arquivo .env nao encontrado em D:\\API_MJ\\.env
+                                )
+                            )
+
+                            REM Atualiza dependencias utilizando o interpretador resolvido
                             python -m pip install --upgrade pip
-                            pip install -r requirements.txt
+                            python -m pip install -r requirements.txt
                         '''
                     }
                 }
