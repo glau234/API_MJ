@@ -46,60 +46,50 @@ pipeline {
                             pip3 install -r requirements.txt
                         '''
                     } else {
-                        bat '''
-                            @echo off
-                            echo === 1. Localizando interpretador Python no servidor ===
-                            set "PY_EXE="
-
-                            REM Procura por python.exe em locais padrao de instalacao do Windows
-                            for %%P in (
-                                "C:\\Python312\\python.exe"
-                                "C:\\Python311\\python.exe"
-                                "C:\\Python310\\python.exe"
-                                "C:\\Python39\\python.exe"
-                                "C:\\Program Files\\Python312\\python.exe"
-                                "C:\\Program Files\\Python311\\python.exe"
-                                "C:\\Program Files\\Python310\\python.exe"
-                                "C:\\Program Files\\Python39\\python.exe"
-                                "C:\\Program Files (x86)\\Python312\\python.exe"
-                                "C:\\Program Files (x86)\\Python311\\python.exe"
-                                "C:\\Program Files (x86)\\Python310\\python.exe"
-                                "C:\\ProgramData\\chocolatey\\bin\\python.exe"
-                            ) do (
-                                if exist %%P if not defined PY_EXE set "PY_EXE=%%~P"
+                        powershell '''
+                            Write-Host "=== 1. Localizando interpretador Python no servidor Jenkins ==="
+                            
+                            $candidates = @(
+                                "C:\\Program Files\\Python312\\python.exe",
+                                "C:\\Program Files\\Python311\\python.exe",
+                                "C:\\Program Files\\Python310\\python.exe",
+                                "C:\\Python312\\python.exe",
+                                "C:\\Python311\\python.exe",
+                                "C:\\Python310\\python.exe",
+                                "C:\\tools\\python\\python.exe"
                             )
 
-                            REM Se nao encontrou em locais padrao do sistema, busca nos perfis de usuarios
-                            if not defined PY_EXE (
-                                for /d %%U in ("C:\\Users\\*") do (
-                                    if exist "%%U\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" (
-                                        set "PY_EXE=%%U\\AppData\\Local\\Programs\\Python\\Python312\\python.exe"
-                                    ) else if exist "%%U\\AppData\\Local\\Programs\\Python\\Python311\\python.exe" (
-                                        set "PY_EXE=%%U\\AppData\\Local\\Programs\\Python\\Python311\\python.exe"
-                                    ) else if exist "%%U\\AppData\\Local\\Programs\\Python\\Python310\\python.exe" (
-                                        set "PY_EXE=%%U\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
-                                    )
-                                )
-                            )
+                            # Busca em perfis de usuários
+                            $userPythons = Get-ChildItem "C:\\Users\\*\\AppData\\Local\\Programs\\Python\\Python3*\\python.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+                            if ($userPythons) {
+                                $candidates += $userPythons
+                            }
 
-                            if not defined PY_EXE (
-                                echo ERRO CRITICO: Python nao foi encontrado instalado no servidor Jenkins (10.91.254.37).
-                                echo Verifique se o Python 3.10+ esta instalado neste servidor ou configurado nas variaveis de ambiente do sistema.
-                                exit /b 1
-                            )
+                            # Busca no PATH excluindo o atalho da Microsoft Store
+                            $pathPythons = (Get-Command python.exe -All -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch "WindowsApps" }) | Select-Object -ExpandProperty Source
+                            if ($pathPythons) {
+                                $candidates += $pathPythons
+                            }
 
-                            echo Python localizado com sucesso em: "%PY_EXE%"
-                            echo %PY_EXE% > python_path.txt
+                            $pyExe = $null
+                            foreach ($c in $candidates) {
+                                if (Test-Path $c) {
+                                    $pyExe = $c
+                                    break
+                                }
+                            }
 
-                            echo === 2. Verificando configuracao do .env ===
-                            if not exist ".env" (
-                                echo AVISO: Arquivo .env nao localizado no workspace.
-                                echo O script utilizara as variaveis de ambiente configuradas no Jenkins.
-                            )
+                            if (-not $pyExe) {
+                                Write-Error "ERRO CRITICO: Python nao foi encontrado no servidor Jenkins (10.91.254.37). Instale o Python 3 neste servidor."
+                                exit 1
+                            }
 
-                            echo === 3. Instalando / Validando dependencias ===
-                            "%PY_EXE%" -m pip install --upgrade pip
-                            "%PY_EXE%" -m pip install -r requirements.txt
+                            Write-Host "Python localizado com sucesso em: $pyExe"
+                            Set-Content -Path "python_path.txt" -Value $pyExe -Force
+
+                            Write-Host "=== 2. Instalando / Validando dependencias ==="
+                            & $pyExe -m pip install --upgrade pip
+                            & $pyExe -m pip install -r requirements.txt
                         '''
                     }
                 }
@@ -114,11 +104,11 @@ pipeline {
                     if (isUnix()) {
                         sh "python3 etl_gestao_segura.py ${params.MODO_CARGA}"
                     } else {
-                        bat '''
-                            @echo off
-                            set /p PY_EXE=<python_path.txt
-                            if not defined PY_EXE set "PY_EXE=python"
-                            "%PY_EXE%" etl_gestao_segura.py %MODO_CARGA%
+                        powershell '''
+                            $pyExe = Get-Content -Path "python_path.txt" -Raw
+                            $pyExe = $pyExe.Trim()
+                            Write-Host "Executando ETL com: $pyExe"
+                            & $pyExe etl_gestao_segura.py $env:MODO_CARGA
                         '''
                     }
                 }
