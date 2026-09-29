@@ -1,0 +1,6 @@
+# Dependências do Pipeline ETL Gestão Segura (SENASP/MJSP -> PostgreSQL)
+requests>=2.31.0
+pandas>=2.0.0
+SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.0
+python-dotenv>=1.0.0

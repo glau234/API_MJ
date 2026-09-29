@@ -1,0 +1,298 @@
+openapi: 3.0.3
+info:
+  title: API Gestão Segura — Plano de Aplicação (v1)
+  version: "1.0"
+  description: |
+    API REST de **consulta (somente leitura)** aos dados de planejamento do
+    Fundo Nacional de Segurança Pública registrados no Sistema Gestão Segura:
+    plano de aplicação geral, plano de ação vigente, metas e itens de
+    contratação.
+
+    **Isolamento por UF:** a credencial entregue à sua instituição está
+    vinculada à sua UF. Todas as respostas são automaticamente filtradas —
+    não é possível (nem necessário) informar a UF como parâmetro.
+
+    **Autenticação:** OAuth 2.0, fluxo *client credentials*. Obtenha um
+    token no endpoint de token e envie-o no header `Authorization: Bearer`.
+    O token expira em 3600 segundos (1 hora); gere um novo quando expirar.
+
+    **Paginação:** todas as coleções retornam no máximo 25 itens por página.
+    Use `?limit=` e `?offset=` e siga os links `next`/`prev` do payload.
+  contact:
+    name: CPTI — Comissão Permanente de Tecnologia da Informação e Inovação do Fundo de Segurança Pública (SENASP/MJSP)
+
+servers:
+  - url: https://apps.mj.gov.br/ws_20250508093400
+    description: Produção
+
+security:
+  - oauth2ClientCredentials: []
+
+tags:
+  - name: Planejamento
+    description: Cadeia plano de aplicação → plano de ação → metas → itens
+
+paths:
+  /api/v1/planos-aplicacao:
+    get:
+      tags: [Planejamento]
+      summary: Planos de aplicação gerais da UF
+      description: >
+        Raiz do planejamento: um registro por área temática e ano de
+        planejamento da UF autenticada.
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: Coleção de planos de aplicação
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ColecaoPaginada'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PlanoAplicacao'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+
+  /api/v1/planos-acao:
+    get:
+      tags: [Planejamento]
+      summary: Planos de ação vigentes da UF
+      description: >
+        Retorna somente a **versão vigente** de cada plano de ação
+        (a versão mais recente não excluída). Versões substituídas por
+        aditivação/replanejamento não são retornadas.
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: Coleção de planos de ação vigentes
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ColecaoPaginada'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PlanoAcao'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+
+  /api/v1/metas:
+    get:
+      tags: [Planejamento]
+      summary: Metas dos planos de ação vigentes da UF
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: Coleção de metas
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ColecaoPaginada'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+
+  /api/v1/itens-contratacao:
+    get:
+      tags: [Planejamento]
+      summary: Itens de contratação planejados da UF
+      description: >
+        Detalhamento físico-financeiro do planejamento (quantidade, unidade
+        de medida e valores planejados por fonte), vinculado às metas dos
+        planos de ação vigentes.
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: Coleção de itens de contratação
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ColecaoPaginada'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ItemContratacao'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+
+  /oauth/token:
+    post:
+      security: []
+      tags: [Planejamento]
+      summary: Obtenção do token de acesso (OAuth 2.0 client credentials)
+      description: >
+        Autenticação HTTP Basic com `client_id` como usuário e
+        `client_secret` como senha, corpo `grant_type=client_credentials`.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  enum: [client_credentials]
+              required: [grant_type]
+      responses:
+        '200':
+          description: Token emitido
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  token_type:   { type: string, example: bearer }
+                  expires_in:   { type: integer, example: 3600 }
+        '401':
+          description: Credenciais inválidas
+
+components:
+  securitySchemes:
+    oauth2ClientCredentials:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://apps.mj.gov.br/ws_20250508093400/oauth/token
+          scopes: {}
+
+  parameters:
+    limit:
+      name: limit
+      in: query
+      description: Quantidade máxima de itens por página (padrão 25)
+      schema: { type: integer, default: 25 }
+    offset:
+      name: offset
+      in: query
+      description: Deslocamento (posição inicial) para paginação
+      schema: { type: integer, default: 0 }
+
+  responses:
+    NaoAutorizado:
+      description: Token ausente, inválido ou expirado. Gere um novo token.
+
+  schemas:
+    ColecaoPaginada:
+      type: object
+      description: Envelope padrão de coleção (Oracle REST Data Services)
+      properties:
+        hasMore:
+          type: boolean
+          description: Indica se há mais páginas
+        limit:   { type: integer }
+        offset:  { type: integer }
+        count:   { type: integer, description: Itens nesta página }
+        links:
+          type: array
+          items:
+            type: object
+            properties:
+              rel:  { type: string, example: next }
+              href: { type: string, format: uri }
+
+    PlanoAplicacao:
+      type: object
+      description: Plano de aplicação geral (raiz do planejamento por área temática e ano)
+      properties:
+        pk_gstb023:            { type: integer, description: Identificador do plano de aplicação }
+        sg_uf:                 { type: string,  description: UF (sempre a da credencial) }
+        ano_plan:              { type: string,  description: Ano do planejamento (AAAA) }
+        sg_area_tematica:      { type: string,  description: Sigla da área temática (ex. RMVI, EVM, MQVPSP) }
+        vl_plan_orig_custeio:  { type: number, nullable: true, description: Valor planejado original — custeio }
+        vl_plan_orig_invest:   { type: number, nullable: true, description: Valor planejado original — investimento }
+        vl_plan_supl_custeio:  { type: number, nullable: true, description: Valor suplementar — custeio }
+        vl_plan_supl_invest:   { type: number, nullable: true, description: Valor suplementar — investimento }
+        vl_plan_rend_custeio:  { type: number, nullable: true, description: Rendimentos — custeio }
+        vl_plan_rend_invest:   { type: number, nullable: true, description: Rendimentos — investimento }
+        tx_diagnostico:        { type: string, nullable: true }
+        tx_justificativa:      { type: string, nullable: true }
+        tx_meta_geral:         { type: string, nullable: true, description: Meta geral do plano }
+
+    PlanoAcao:
+      type: object
+      description: >
+        Versão vigente do plano de ação (dados originários do TransfereGov).
+        Campos principais listados; o payload contém campos adicionais de
+        identificação de entes/fundos repassador e recebedor.
+      additionalProperties: true
+      properties:
+        pk_gstb041:                    { type: integer, description: Identificador da versão vigente do plano de ação }
+        fk_gstb023:                    { type: integer, description: Plano de aplicação a que se vincula }
+        sg_uf:                         { type: string }
+        ano_plan:                      { type: string }
+        codigo_plano_acao:             { type: string,  nullable: true }
+        situacao_plano_acao:           { type: string,  nullable: true }
+        data_inicio_vigencia_plano_acao: { type: string, format: date-time, nullable: true }
+        data_fim_vigencia_plano_acao:  { type: string, format: date-time, nullable: true }
+        valor_total_repasse_plano_acao:      { type: number, nullable: true }
+        valor_total_plano_acao:              { type: number, nullable: true }
+        valor_total_investimento_plano_acao: { type: number, nullable: true }
+        valor_total_custeio_plano_acao:      { type: number, nullable: true }
+        valor_saldo_disponivel_plano_acao:   { type: number, nullable: true }
+        diagnostico_plano_acao:        { type: string, nullable: true }
+        objetivos_plano_acao:          { type: string, nullable: true }
+
+    Meta:
+      type: object
+      description: Meta de um plano de ação vigente
+      additionalProperties: true
+      properties:
+        pk_gstb042:               { type: integer, description: Identificador da meta }
+        fk_gstb041:               { type: integer, description: Plano de ação (versão vigente) a que pertence }
+        pk_gstb041:               { type: integer, description: Idem fk_gstb041 (chave de navegação) }
+        sg_uf:                    { type: string }
+        ano_plan:                 { type: string }
+        numero_meta_plano_acao:   { type: string,  nullable: true }
+        nome_meta_plano_acao:     { type: string,  nullable: true }
+        valor_meta_plano_acao:    { type: number,  nullable: true }
+        cl_status_meta:           { type: string,  nullable: true }
+        descricao_meta_plano_acao: { type: string, nullable: true }
+
+    ItemContratacao:
+      type: object
+      description: Item de contratação planejado, vinculado a uma meta
+      additionalProperties: true
+      properties:
+        pk_gstb025:      { type: integer, description: Identificador do item }
+        fk_gstb042:      { type: integer, description: Meta a que se vincula }
+        pk_gstb042:      { type: integer, description: Idem fk_gstb042 (chave de navegação) }
+        pk_gstb041:      { type: integer, description: Plano de ação vigente da cadeia }
+        sg_uf:           { type: string }
+        ano_plan:        { type: string }
+        nr_meta:         { type: string,  nullable: true }
+        no_acao:         { type: string,  nullable: true }
+        tx_bem_servico:  { type: string,  nullable: true, description: Descrição do bem/serviço }
+        no_destinacao:   { type: string,  nullable: true }
+        qtd_plan:        { type: number,  nullable: true, description: Quantidade planejada }
+        tp_un_medida:    { type: string,  nullable: true, description: Unidade de medida }
+        vl_plan_orig:    { type: number,  nullable: true, description: Valor planejado — recursos originais }
+        vl_plan_supl:    { type: number,  nullable: true, description: Valor planejado — suplementação }
+        vl_plan_rend:    { type: number,  nullable: true, description: Valor planejado — rendimentos }
+        cl_status_item:  { type: string,  nullable: true, description: Status do item }
