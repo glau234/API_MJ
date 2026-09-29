@@ -37,7 +37,6 @@ pipeline {
     stages {
         stage('Preparar Ambiente') {
             steps {
-                // Cria diretório de logs se não existir
                 dir('logs') { }
                 
                 script {
@@ -49,22 +48,58 @@ pipeline {
                     } else {
                         bat '''
                             @echo off
-                            echo === Validando Python e Ambiente ===
-                            where python
+                            echo === 1. Localizando interpretador Python no servidor ===
+                            set "PY_EXE="
 
-                            REM Copia o arquivo .env seguro com senhas e chaves se estiver na maquina local
-                            if not exist ".env" (
-                                if exist "D:\\API_MJ\\.env" (
-                                    echo Copiando arquivo .env de D:\\API_MJ\\.env para o workspace...
-                                    copy "D:\\API_MJ\\.env" ".env" >nul
-                                ) else (
-                                    echo AVISO: Arquivo .env nao encontrado em D:\\API_MJ\\.env
+                            REM Procura por python.exe em locais padrao de instalacao do Windows
+                            for %%P in (
+                                "C:\\Python312\\python.exe"
+                                "C:\\Python311\\python.exe"
+                                "C:\\Python310\\python.exe"
+                                "C:\\Python39\\python.exe"
+                                "C:\\Program Files\\Python312\\python.exe"
+                                "C:\\Program Files\\Python311\\python.exe"
+                                "C:\\Program Files\\Python310\\python.exe"
+                                "C:\\Program Files\\Python39\\python.exe"
+                                "C:\\Program Files (x86)\\Python312\\python.exe"
+                                "C:\\Program Files (x86)\\Python311\\python.exe"
+                                "C:\\Program Files (x86)\\Python310\\python.exe"
+                                "C:\\ProgramData\\chocolatey\\bin\\python.exe"
+                            ) do (
+                                if exist %%P if not defined PY_EXE set "PY_EXE=%%~P"
+                            )
+
+                            REM Se nao encontrou em locais padrao do sistema, busca nos perfis de usuarios
+                            if not defined PY_EXE (
+                                for /d %%U in ("C:\\Users\\*") do (
+                                    if exist "%%U\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" (
+                                        set "PY_EXE=%%U\\AppData\\Local\\Programs\\Python\\Python312\\python.exe"
+                                    ) else if exist "%%U\\AppData\\Local\\Programs\\Python\\Python311\\python.exe" (
+                                        set "PY_EXE=%%U\\AppData\\Local\\Programs\\Python\\Python311\\python.exe"
+                                    ) else if exist "%%U\\AppData\\Local\\Programs\\Python\\Python310\\python.exe" (
+                                        set "PY_EXE=%%U\\AppData\\Local\\Programs\\Python\\Python310\\python.exe"
+                                    )
                                 )
                             )
 
-                            REM Atualiza dependencias utilizando o interpretador resolvido
-                            python -m pip install --upgrade pip
-                            python -m pip install -r requirements.txt
+                            if not defined PY_EXE (
+                                echo ERRO CRITICO: Python nao foi encontrado instalado no servidor Jenkins (10.91.254.37).
+                                echo Verifique se o Python 3.10+ esta instalado neste servidor ou configurado nas variaveis de ambiente do sistema.
+                                exit /b 1
+                            )
+
+                            echo Python localizado com sucesso em: "%PY_EXE%"
+                            echo %PY_EXE% > python_path.txt
+
+                            echo === 2. Verificando configuracao do .env ===
+                            if not exist ".env" (
+                                echo AVISO: Arquivo .env nao localizado no workspace.
+                                echo O script utilizara as variaveis de ambiente configuradas no Jenkins.
+                            )
+
+                            echo === 3. Instalando / Validando dependencias ===
+                            "%PY_EXE%" -m pip install --upgrade pip
+                            "%PY_EXE%" -m pip install -r requirements.txt
                         '''
                     }
                 }
@@ -79,7 +114,12 @@ pipeline {
                     if (isUnix()) {
                         sh "python3 etl_gestao_segura.py ${params.MODO_CARGA}"
                     } else {
-                        bat "python etl_gestao_segura.py %MODO_CARGA%"
+                        bat '''
+                            @echo off
+                            set /p PY_EXE=<python_path.txt
+                            if not defined PY_EXE set "PY_EXE=python"
+                            "%PY_EXE%" etl_gestao_segura.py %MODO_CARGA%
+                        '''
                     }
                 }
             }
