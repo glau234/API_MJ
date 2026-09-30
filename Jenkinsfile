@@ -105,6 +105,19 @@ pipeline {
                         sh "python3 etl_gestao_segura.py ${params.MODO_CARGA}"
                     } else {
                         powershell '''
+                            # Garante que o arquivo .env esteja presente no workspace
+                            if (-not (Test-Path ".env")) {
+                                if (Test-Path "C:\\ProgramData\\Jenkins\\.env_mj") {
+                                    Write-Host "Copiando .env seguro de C:\\ProgramData\\Jenkins\\.env_mj..."
+                                    Copy-Item "C:\\ProgramData\\Jenkins\\.env_mj" ".env" -Force
+                                } elseif (Test-Path "C:\\ProgramData\\Jenkins\\.env") {
+                                    Write-Host "Copiando .env seguro de C:\\ProgramData\\Jenkins\\.env..."
+                                    Copy-Item "C:\\ProgramData\\Jenkins\\.env" ".env" -Force
+                                } else {
+                                    Write-Warning "Arquivo .env nao encontrado em C:\\ProgramData\\Jenkins\\.env_mj nem no workspace."
+                                }
+                            }
+
                             $pyExe = Get-Content -Path "python_path.txt" -Raw
                             $pyExe = $pyExe.Trim()
                             Write-Host "Executando ETL com: $pyExe"
